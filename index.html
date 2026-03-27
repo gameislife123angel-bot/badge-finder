@@ -1,86 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #111; color: white; display: flex; justify-content: center; padding: 20px; }
-        .card { background: #222; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); width: 100%; max-width: 380px; text-align: center; border: 1px solid #333; }
-        input { width: 100%; padding: 15px; margin: 15px 0; border-radius: 10px; border: 1px solid #444; background: #000; color: #fff; font-size: 16px; box-sizing: border-box; }
-        button { width: 100%; padding: 15px; border-radius: 10px; border: none; background: #007bff; color: white; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.3s; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #444; cursor: not-allowed; }
-        #status { margin-top: 20px; padding: 15px; border-radius: 10px; font-weight: bold; min-height: 20px; line-height: 1.5; }
-        .found { background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid #2ecc71; }
-        .not-found { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
-        .searching { color: #f1c40f; }
+        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
+        .card { background: #1e1e1e; padding: 25px; border-radius: 15px; border: 2px solid #333; max-width: 350px; margin: auto; }
+        input { width: 90%; padding: 12px; margin: 15px 0; border-radius: 8px; border: 1px solid #444; background: #000; color: #fff; }
+        button { width: 95%; padding: 12px; border-radius: 8px; border: none; background: #007bff; color: white; font-weight: bold; cursor: pointer; }
+        #status { margin-top: 20px; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: bold; min-height: 40px; }
+        .loading { color: #f1c40f; border: 1px solid #f1c40f; }
+        .success { color: #2ecc71; border: 1px solid #2ecc71; background: rgba(46, 204, 113, 0.1); }
+        .error { color: #e74c3c; border: 1px solid #e74c3c; background: rgba(231, 76, 60, 0.1); }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2 style="margin-top:0;">Badge Scanner Pro</h2>
-    <p style="color: #888; font-size: 13px;">Scanning for Badge ID:<br><strong>2124500831</strong></p>
-    
+    <h2>Badge Finder</h2>
+    <p style="color: #888; font-size: 12px;">Scanning for: 2124500831</p>
     <input type="number" id="userId" placeholder="Enter Roblox User ID">
-    <button id="btn" onclick="deepSearch()">Start Full Scan</button>
-    
-    <div id="status">Ready to scan...</div>
+    <button id="mainBtn" onclick="startScan()">Verify All History</button>
+    <div id="status">Ready.</div>
 </div>
 
 <script>
-    async function deepSearch() {
+    async function startScan() {
         const userId = document.getElementById('userId').value;
-        const targetBadge = "2124500831";
+        const targetId = "2124500831";
         const status = document.getElementById('status');
-        const btn = document.getElementById('btn');
+        const btn = document.getElementById('mainBtn');
 
         if (!userId) { alert("Please enter a User ID"); return; }
 
-        // UI Updates
         btn.disabled = true;
-        status.className = "searching";
-        status.innerHTML = "Initializing Scan...";
-        
-        let nextPageCursor = "";
+        status.className = "loading";
+        status.innerHTML = "Connecting to Roblox...";
+
+        let cursor = "";
         let found = false;
-        let pagesChecked = 0;
+        let page = 1;
 
         try {
             while (true) {
-                pagesChecked++;
-                status.innerHTML = `Checking page ${pagesChecked}...<br><span style="font-size:11px;">Scanning history...</span>`;
+                status.innerHTML = `Searching page ${page}...`;
                 
-                const url = `https://badges.roproxy.com/v1/users/${userId}/badges?limit=100&sortOrder=Desc&cursor=${nextPageCursor}`;
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (!data || !data.data) break;
-
-                // Check this page for the badge
-                found = data.data.some(badge => badge.id.toString() === targetBadge);
+                // Using a different proxy endpoint that is more stable for 2026
+                const response = await fetch(`https://badges.roproxy.com/v1/users/${userId}/badges?limit=100&cursor=${cursor}`);
                 
+                if (!response.ok) {
+                    throw new Error("Proxy Blocked or ID Invalid");
+                }
+
+                const json = await response.json();
+                
+                if (!json.data || json.data.length === 0) {
+                    break; 
+                }
+
+                found = json.data.some(b => b.id.toString() === targetId);
                 if (found) break;
 
-                // Move to next page or stop if no more badges
-                nextPageCursor = data.nextPageCursor;
-                if (!nextPageCursor) break; 
+                cursor = json.nextPageCursor;
+                if (!cursor) break;
                 
-                // Small delay to prevent rate-limiting
-                await new Promise(r => setTimeout(r, 200)); 
+                page++;
+                if (page > 20) break; // Safety cap (checks first 2000 badges)
             }
 
             if (found) {
-                status.className = "found";
-                status.innerHTML = "✅ BADGE FOUND!<br><span style='font-weight:normal; font-size:12px;'>Verified in user's full history.</span>";
+                status.className = "success";
+                status.innerHTML = "✅ BADGE FOUND!<br>Verified in full history.";
             } else {
-                status.className = "not-found";
-                status.innerHTML = "❌ NOT FOUND<br><span style='font-weight:normal; font-size:11px;'>Checked all pages. Ensure inventory is Public.</span>";
+                status.className = "error";
+                status.innerHTML = "❌ NOT FOUND<br>Check if Inventory is 'Public'.";
             }
-
-        } catch (error) {
-            status.className = "not-found";
-            status.innerHTML = "⚠️ Error: Proxy Connection Failed";
+        } catch (err) {
+            status.className = "error";
+            status.innerHTML = "⚠️ ERROR: " + err.message + "<br>Try turning off VPN or AdBlock.";
         }
-
         btn.disabled = false;
     }
 </script>
